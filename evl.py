@@ -60,8 +60,12 @@ def making_words():
     width, height = image.size
     
     # 计算需要分割的块数
-    max_height = 2048
+    max_height = 4000
     num_chunks = math.ceil(height / max_height)
+    
+    ########################
+    # 第一次识别
+    ########################
     
     # 存储所有子图片的OCR结果
     all_results = []
@@ -176,7 +180,143 @@ def making_words():
     txts.append("得到基础价格")
     scores.append(ans)
     im_show = draw_ocr(image, boxes, txts, scores, font_path="./doc/fonts/simfang.ttf")
-    im_show = Image.fromarray(im_show)
+    total_price_1 = total
+    im_show_1 = Image.fromarray(im_show)
+    
+    
+    ########################
+    # 第二次识别 , 偏移 offset = 100 再识别一次
+    ########################
+    
+     # 存储所有子图片的OCR结果
+    all_results = []
+    
+    # 处理每个子图片
+    for i in range(num_chunks):
+        # 计算当前块的上下边界
+        top = i * max_height + 100
+        bottom = min((i + 1) * max_height + 100, height)
+        
+        # 裁剪当前块
+        chunk = image.crop((0, top, width, bottom))
+        chunk_path = f"chunk_{i}.jpg"
+        chunk.save(chunk_path)
+        
+        # 对当前块进行OCR
+        chunk_result = ocr.ocr(chunk_path, cls=True)
+        
+        # 调整坐标以反映在原始图像中的位置
+        chunk_result = chunk_result[0]
+        if chunk_result and len(chunk_result) > 0:
+            for idx in range(len(chunk_result)):
+                res = chunk_result[idx]
+                box, (text, prob) = res
+                # 调整坐标，加上当前块在原图中的y偏移
+                adjusted_box = [[p[0], p[1] + top] for p in box]
+                adjusted_res = [adjusted_box, (text, prob)]
+                all_results.append(adjusted_res)
+                
+        # 删除临时文件
+        os.remove(chunk_path)
+    
+    result = [all_results]
+    
+    for idx in range(len(result)):
+        res = result[idx]
+        for line in res:
+            print(line)
+
+    for card in cards:
+        usd[card["name"]] = False
+        if "price_new" in card:
+            # 将字符串转换为浮点数，再向下取整为整数
+            card["price_new"] = math.floor(float(card["price_new"]))
+        else:
+            card["price_new"] = 0  # 如果缺失 price_new，则默认值为 0
+
+    for card in cards:
+        if "price_old" in card:
+            # 将字符串转换为浮点数，再向下取整为整数
+            card["price_old"] = math.floor(float(card["price_old"]))
+        else:
+            card["price_old"] = 0  # 如果缺失 price_new，则默认值为 0
+
+    # 显示结果
+    from PIL import Image
+
+    result = result[0]
+    image = Image.open(img_path).convert("RGB")
+    boxes = []
+    txts = []
+    scores = []
+    total = 0
+    boxes_tmp = [line[0] for line in result]
+    txts_tmp = [line[1][0] for line in result]
+    # scores_tmp = [line[1][1] for line in result]
+    for idx, name_now in enumerate(txts_tmp):
+        for card in cards:
+            if usd[card["name"]]:
+                continue
+            if card["name"] == name_now:
+                total += card["price_new"]
+                decc *= 0.99
+                boxes.append(boxes_tmp[idx])
+                txts.append(txts_tmp[idx])
+                scores.append(card["price_new"])
+                usd[card["name"]] = True
+                break
+            elif cmp(card["name"], name_now):
+                total += card["price_new"]
+                decc *= 0.99
+                boxes.append(boxes_tmp[idx])
+                txts.append(card["name"])
+                scores.append(card["price_new"])
+                usd[card["name"]] = True
+                break
+
+    if len(txts) >= 1:
+        # --- 同步排序（按 scores 降序）---
+        combined = list(zip(scores, boxes, txts))  # 组合
+        combined_sorted = sorted(combined, key=lambda x: x, reverse=True)  # 排序
+        scores_sorted, boxes_sorted, txts_sorted = zip(*combined_sorted)  # 解包
+
+        # 覆盖原列表（转回列表类型）
+        scores = list(scores_sorted)
+        boxes = list(boxes_sorted)
+        txts = list(txts_sorted)
+
+    if decc <= 0.7:
+        decc = 0.7
+    decc = math.log10(10 * decc)
+    if decc <= 0.87:
+        decc = 0.87
+    ans = total * decc
+    ans = math.floor(ans)
+    decc = round(decc, 3)
+
+    txts.append("所标注皮肤总价格为")
+    scores.append(total)
+    txts.append("建议乘折扣系数")
+    scores.append(decc)
+    txts.append("得到基础价格")
+    scores.append(ans)
+    im_show = draw_ocr(image, boxes, txts, scores, font_path="./doc/fonts/simfang.ttf")
+    total_price_2 = total
+    im_show_2 = Image.fromarray(im_show)
+    
+    
+    ########################
+    # 选择最高价
+    ########################
+    
+    if total_price_1 > total_price_2:
+        total = total_price_1
+        im_show = im_show_1
+    else:
+        total = total_price_2
+        im_show = im_show_2
+    
+    print(f'total_price_1: {total_price_1}, total_price_2: {total_price_2}')
     im_show.save("result.jpg")
     return r"result.jpg"
 

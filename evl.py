@@ -53,7 +53,49 @@ def making_words():
         det_limit_type="max",  # 按最长边缩放（保持宽高比）
     )  # need to run only once to download and load model into memory
     img_path = r"read.jpg"
-    result = ocr.ocr(img_path, cls=True)
+    
+    # 读取图片并分割成高度为4000的块
+    from PIL import Image
+    image = Image.open(img_path)
+    width, height = image.size
+    
+    # 计算需要分割的块数
+    max_height = 2048
+    num_chunks = math.ceil(height / max_height)
+    
+    # 存储所有子图片的OCR结果
+    all_results = []
+    
+    # 处理每个子图片
+    for i in range(num_chunks):
+        # 计算当前块的上下边界
+        top = i * max_height
+        bottom = min((i + 1) * max_height, height)
+        
+        # 裁剪当前块
+        chunk = image.crop((0, top, width, bottom))
+        chunk_path = f"chunk_{i}.jpg"
+        chunk.save(chunk_path)
+        
+        # 对当前块进行OCR
+        chunk_result = ocr.ocr(chunk_path, cls=True)
+        
+        # 调整坐标以反映在原始图像中的位置
+        chunk_result = chunk_result[0]
+        if chunk_result and len(chunk_result) > 0:
+            for idx in range(len(chunk_result)):
+                res = chunk_result[idx]
+                box, (text, prob) = res
+                # 调整坐标，加上当前块在原图中的y偏移
+                adjusted_box = [[p[0], p[1] + top] for p in box]
+                adjusted_res = [adjusted_box, (text, prob)]
+                all_results.append(adjusted_res)
+                
+        # 删除临时文件
+        os.remove(chunk_path)
+    
+    result = [all_results]
+    
     for idx in range(len(result)):
         res = result[idx]
         for line in res:

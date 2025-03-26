@@ -137,42 +137,42 @@ def making_words():
     im_show.save('result.jpg')
     return r"result.jpg"
 
-def qwen_words():
-    global total
-    device = "cuda" # the device to load the model onto
-    model = AutoModelForCausalLM.from_pretrained(
-        r"qwen",
-        torch_dtype="auto",
-        device_map="auto"
-    )
-    tokenizer = AutoTokenizer.from_pretrained(r"qwen")
+# def qwen_words():
+#     global total
+#     device = "cuda" # the device to load the model onto
+#     model = AutoModelForCausalLM.from_pretrained(
+#         r"qwen",
+#         torch_dtype="auto",
+#         device_map="auto"
+#     )
+#     tokenizer = AutoTokenizer.from_pretrained(r"qwen")
 
-    global cards,boxes,txts,scores
-    prompt = "帮我详细分析以下价格表，我所售卖的商品含有以下所有内容各一份，为我提供详细的售卖建议"
-    for txt, score in zip(txts, scores):
-        sentence = f"名字为{txt}的皮肤价格是{score}"
-        prompt = prompt + sentence
+#     global cards,boxes,txts,scores
+#     prompt = "帮我详细分析以下价格表，我所售卖的商品含有以下所有内容各一份，为我提供详细的售卖建议"
+#     for txt, score in zip(txts, scores):
+#         sentence = f"名字为{txt}的皮肤价格是{score}"
+#         prompt = prompt + sentence
     
-    messages = [
-        {"role": "system", "content": "分析用户所提供内容，为用户提供详细售卖建议。比如可以告诉用户根据收藏人数调整价格高低，通过观察相似商品进一步确定价格，告诉用户在抽签期时多观察杜绝被贱卖。"},
-        {"role": "user", "content": prompt}
-    ]
-    text = tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True
-    )
-    model_inputs = tokenizer([text], return_tensors="pt").to(device)
+#     messages = [
+#         {"role": "system", "content": "分析用户所提供内容，为用户提供详细售卖建议。比如可以告诉用户根据收藏人数调整价格高低，通过观察相似商品进一步确定价格，告诉用户在抽签期时多观察杜绝被贱卖。"},
+#         {"role": "user", "content": prompt}
+#     ]
+#     text = tokenizer.apply_chat_template(
+#         messages,
+#         tokenize=False,
+#         add_generation_prompt=True
+#     )
+#     model_inputs = tokenizer([text], return_tensors="pt").to(device)
 
-    generated_ids = model.generate(
-        model_inputs.input_ids,
-        max_new_tokens=1000000  
-    )
-    generated_ids = [
-        output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
-    ]
-    response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
-    return response
+#     generated_ids = model.generate(
+#         model_inputs.input_ids,
+#         max_new_tokens=1000000  
+#     )
+#     generated_ids = [
+#         output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
+#     ]
+#     response = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+#     return response
 
 def process_image(input_image):
     # 生成描述文本

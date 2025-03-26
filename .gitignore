@@ -1,0 +1,12 @@
+# MacOS
+.DS_Store
+
+# Binary files
+pretrained_models*
+*.jpg
+*.png
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.webp

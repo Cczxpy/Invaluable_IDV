@@ -4,8 +4,22 @@ import os
 import gradio as gr
 import pandas as pd
 
-# from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from paddleocr import PaddleOCR, draw_ocr
+import re
+
+from webjudger import WebJudger
+
+from flask import Flask, request, Response, jsonify
+from sqlalchemy import create_engine, text
+from sqlalchemy.orm import sessionmaker
+import logging
+from datetime import datetime, timedelta
+import requests
+import urllib.parse
+import json
+
+
 
 xlsx_file = os.path.join("database", "第五人格藏宝阁制作版.xlsx")
 df = pd.read_excel(xlsx_file, engine="openpyxl")
@@ -19,6 +33,9 @@ scores = []
 ans = 0
 total = 0
 decc = 1
+
+def cle(str_a):
+    return re.sub(r'[“”‘’"\']', '', str_a)
 
 
 def cmp(tex_a, tex_b):
@@ -136,17 +153,17 @@ def making_words():
         for card in cards:
             if usd[card["name"]]:
                 continue
-            if card["name"] == name_now:
+            if cle(card["name"]) == cle(name_now):
                 total += card["price_new"]
-                decc *= 0.99
+                decc *= 0.97
                 boxes.append(boxes_tmp[idx])
                 txts.append(txts_tmp[idx])
                 scores.append(card["price_new"])
                 usd[card["name"]] = True
                 break
-            elif cmp(card["name"], name_now):
+            elif cmp(cle(card["name"]), cle(name_now)):
                 total += card["price_new"]
-                decc *= 0.99
+                decc *= 0.97
                 boxes.append(boxes_tmp[idx])
                 txts.append(card["name"])
                 scores.append(card["price_new"])
@@ -164,11 +181,11 @@ def making_words():
         boxes = list(boxes_sorted)
         txts = list(txts_sorted)
 
-    if decc <= 0.7:
-        decc = 0.7
+    if decc <= 0.3:
+        decc = 0.3
     decc = math.log10(10 * decc)
-    if decc <= 0.87:
-        decc = 0.87
+    if decc <= 0.65:
+        decc = 0.65
     ans = total * decc
     ans = math.floor(ans)
     decc = round(decc, 3)
@@ -257,17 +274,17 @@ def making_words():
         for card in cards:
             if usd[card["name"]]:
                 continue
-            if card["name"] == name_now:
+            if cle(card["name"]) == cle(name_now):
                 total += card["price_new"]
-                decc *= 0.99
+                decc *= 0.97
                 boxes.append(boxes_tmp[idx])
                 txts.append(txts_tmp[idx])
                 scores.append(card["price_new"])
                 usd[card["name"]] = True
                 break
-            elif cmp(card["name"], name_now):
+            elif cmp(cle(card["name"]), cle(name_now)):
                 total += card["price_new"]
-                decc *= 0.99
+                decc *= 0.97
                 boxes.append(boxes_tmp[idx])
                 txts.append(card["name"])
                 scores.append(card["price_new"])
@@ -285,11 +302,11 @@ def making_words():
         boxes = list(boxes_sorted)
         txts = list(txts_sorted)
 
-    if decc <= 0.7:
-        decc = 0.7
+    if decc <= 0.3:
+        decc = 0.3
     decc = math.log10(10 * decc)
-    if decc <= 0.87:
-        decc = 0.87
+    if decc <= 0.65:
+        decc = 0.65
     ans = total * decc
     ans = math.floor(ans)
     decc = round(decc, 3)
@@ -377,23 +394,41 @@ def process_image(input_image):
     )
     return description, output_image
 
+web_checker = WebJudger
+def webslayer(now_id):
+    game_ordersn = web_checker.gain_id(now_id)
+    ans_txt = ""
+    ans_txt = web_checker.check_web_price(web_checker.check_new_web(game_ordersn))
+    return ans_txt
 
 with gr.Blocks() as demo:
-    gr.Markdown("# 藏宝阁AI价格预测（私信发图即可，主播私信回复后即可解锁发图）")
+    with gr.Tab("图鉴估价", id=1):
+        gr.Markdown("# 藏宝阁AI价格预测（私信发图即可，主播私信回复后即可解锁发图）")
 
-    with gr.Row():
-        image_input = gr.Image(type="pil", label="上传图片", height=800)
-        image_output = gr.Image(label="价格标注", height=800)
+        with gr.Row():
+            image_input = gr.Image(type="pil", label="上传图片", height=800)
+            image_output = gr.Image(label="价格标注", height=800)
 
-    query_button = gr.Button("查询")
+        query_button = gr.Button("查询")
 
-    with gr.Row():
-        text_output = gr.Textbox(label="亮点标注", visible=False)
+        with gr.Row():
+            text_output = gr.Textbox(label="亮点标注", visible=False)
 
-    query_button.click(
-        process_image, inputs=image_input, outputs=[text_output, image_output]
-    )
+        query_button.click(
+            process_image, inputs=image_input, outputs=[text_output, image_output]
+        )
+    with gr.Tab("链接估价", id=2):
+        gr.Markdown("# 藏宝阁AI价格预测（发送藏宝阁号链接即可）")
 
+        with gr.Row():
+            with gr.Column():
+                web_input_new = gr.Textbox(label="输入藏宝阁号链接")
+                web_button = gr.Button("查询")
+        with gr.Row():
+            web_output = gr.Textbox(label="亮点标注")
+        web_button.click(
+            webslayer, inputs=web_input_new, outputs=web_output
+        )
 
 # 运行应用
 demo.launch(server_name="localhost", server_port=7060)

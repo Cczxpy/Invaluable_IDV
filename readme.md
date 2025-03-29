@@ -25,6 +25,9 @@ https://paddlepaddle.github.io/PaddleOCR/latest/quick_start.html
 pip install pandas
 pip install openpyxl
 pip install gradio
+pip install flask
+pip install sqlalchemy
+pip install requests
 ```
 
 ## qwen使用：

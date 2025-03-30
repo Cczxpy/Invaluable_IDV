@@ -9,7 +9,7 @@ import config
 class WebJudger:
     # 截取账号id
     def gain_id(http_str):
-        url = http_str
+        # url = http_str
         start_index = len("https://id5.cbg.163.com/cgi/mweb/equip/1/")
         end_index = http_str.find("?", start_index)
         target_string = ""

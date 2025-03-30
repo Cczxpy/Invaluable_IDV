@@ -425,7 +425,9 @@ if __name__ == "__main__":
     pic_folder = config.small_fig_path  # 小图文件夹
     csv_path = config.name_id_path  # ID到名称映射文件
     output_folder = os.path.join(os.path.dirname(__file__), "output")  # 结果输出文件夹
-    score_threshold = config.sift_score_threshold  # SIFT得分阈值 (knn match ratio) - 调整此值
+    score_threshold = (
+        config.sift_score_threshold
+    )  # SIFT得分阈值 (knn match ratio) - 调整此值
     # final_score_threshold = 0.5 # 可以增加一个最终RANSAC得分阈值，如果需要的话
     method_to_use = "sift"  # or 'orb'
 

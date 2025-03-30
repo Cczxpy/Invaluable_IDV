@@ -1,7 +1,11 @@
 import os
 
 score_threshold = 0.6
-lowe_ratio_test_threshold = 0.6
+
+lowe_ratio_test_threshold = 0.5
+min_match_count = 9
+iou_threshold = 0.4
+
 small_fig_path = os.path.join(os.path.dirname(__file__), "database", "pic")
 name_id_path = os.path.join(os.path.dirname(__file__), "database", "name_id.csv")
 price_path = os.path.join(

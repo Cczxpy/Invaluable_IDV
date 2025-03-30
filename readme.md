@@ -17,23 +17,23 @@ conda activate cbg
 pip install -r requirements.txt
 ```
 
-## 安装 paddleocr：
+## 项目运行
 
-https://paddlepaddle.github.io/PaddleOCR/latest/quick_start.html
+根据 `config.py` 文件设置数据库信息 (或者根据数据库位置设置 `config` 的信息):
 
-## qwen使用：
+1. 在 `database` 文件夹中创建 `pic` 文件夹, 并放入小图.
+2. 在 `database` 文件夹中创建 `name_id.csv` 文件, 并放入小图ID与名称的映射关系.
+3. 在 `database` 文件夹中创建 `第五人格藏宝阁制作版.xlsx` 文件, 并放入藏宝阁数据.
 
-本项目暂时去除了AI总结模块，可以不安装transformers和pytorch。后续可能会对此进行完善，pytorch的cuda版本必须和paddlepaddle的cuda版本一致。
-
-## paadleocr使用：
-
-已经在need文件夹中提供了服务端和本地端的v4模型，可根据部署需要切换使用
-
-## 项目运行：
+然后运行 `evl.py` 文件, 即可开始估价.
 
 ```
 python evl.py
 ```
+
+## 项目逻辑
+
+开启网页客户端后, 上传的图片会保存在 `input/<时间戳>` 文件夹中, 经过模式匹配后保存在 `output/<同一个时间戳>` 文件夹下.
 
 ## 二次开发：
 

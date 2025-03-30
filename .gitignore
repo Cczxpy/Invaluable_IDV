@@ -10,6 +10,8 @@ pretrained_models*
 *.bmp
 *.tiff
 *.webp
+!database/pic/*
+*.xlsx
 
 # python
 __pycache__

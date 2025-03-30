@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 
+import config
+
 
 def load_name_mapping(csv_path):
     """
@@ -279,8 +281,9 @@ def process_images(
     pic_folder,
     csv_path,
     output_folder,
-    score_threshold=0.7,
+    score_threshold,
     method="sift",
+    return_matches=False,
 ):
     """
     处理所有图像，标记匹配结果并保存
@@ -292,6 +295,11 @@ def process_images(
         output_folder (str): 结果输出文件夹.
         score_threshold (float): 匹配得分阈值. Defaults to 0.7.
         method (str): 特征匹配方法 ('sift' or 'orb'). Defaults to 'sift'.
+        return_matches (bool): 是否返回匹配结果. Defaults to False.
+
+    Returns:
+        list or None: 如果return_matches为True，返回所有匹配的列表，否则返回None.
+            每个匹配项是一个元组 (small_img_name, box, display_name, score).
     """
     # 确保输出文件夹存在
     os.makedirs(output_folder, exist_ok=True)
@@ -307,6 +315,8 @@ def process_images(
     small_img_cache = {}  # 用于缓存小图的 kp 和 des: {small_img_name: (kp, des)}
     # ----------------
 
+    all_matches = []  # 存储所有匹配，如果需要返回
+
     # 对每个大图进行处理
     for large_img_name, large_img in large_images.items():
         # 复制大图用于绘制结果
@@ -316,11 +326,6 @@ def process_images(
         # --- 缓存大图的 kp 和 des ---
         # 计算一次大图的特征点和描述符
         print(f"  计算大图 {large_img_name} 的特征...")
-        # We call feature_matching with only the large image to pre-compute kp2, des2
-        # We pass a dummy small image (e.g., itself) just to satisfy the function call,
-        # the result for matching itself isn't used, only kp2 and des2 are cached.
-        # A better approach might be to refactor feature extraction.
-        # Or, more simply, call the detector directly here.
         large_gray = cv2.cvtColor(large_img, cv2.COLOR_BGR2GRAY)
         if method == "sift":
             detector = cv2.SIFT_create()
@@ -341,18 +346,11 @@ def process_images(
             # --- 使用/填充小图缓存 ---
             kp_small, des_small = None, None
             if small_img_name in small_img_cache:
-                # print(f"    使用缓存的特征: {small_img_name}") # Debugging line
                 kp_small, des_small = small_img_cache[small_img_name]
             else:
-                # print(f"    计算小图特征: {small_img_name}") # Debugging line
-                # 计算小图特征并缓存 (只需计算一次)
-                # Similar direct call as for the large image
                 small_gray = cv2.cvtColor(small_img, cv2.COLOR_BGR2GRAY)
-                # Reuse the detector instance if method is the same, or recreate
                 if method == "sift":
-                    detector_small = (
-                        cv2.SIFT_create()
-                    )  # Or reuse 'detector' if guaranteed same method
+                    detector_small = cv2.SIFT_create()
                 else:
                     detector_small = cv2.ORB_create(nfeatures=2000)
                 kp_small_calc, des_small_calc = detector_small.detectAndCompute(
@@ -368,8 +366,6 @@ def process_images(
             # -----------------------
 
             # 特征匹配 - 传入缓存的 kp 和 des
-            # Pass cached kp_small, des_small, kp_large, des_large
-            # Only compute if needed (handled inside feature_matching now)
             matched, box, score, _, _, _, _ = feature_matching(
                 large_img,
                 small_img,
@@ -381,20 +377,20 @@ def process_images(
                 threshold=score_threshold,  # Ensure method/threshold are passed
             )
 
-            if matched:  # 使用 score_threshold 在这里过滤可能更合适，或者调整 feature_matching 内部逻辑
+            if matched:
                 print(
                     f"  在大图 {large_img_name} 中找到潜在匹配: {display_name} (ID: {small_img_name}), 得分: {score:.2f}"
                 )
-                # 注意：feature_matching 内部的阈值可能已经过滤了一部分，
-                # 但这里的 score_threshold 是针对最终得分的过滤
                 if score >= score_threshold:
                     print("    -> 满足阈值要求，添加匹配.")
                     matches_found.append((small_img_name, box, display_name, score))
-                # else:
-                #      print(f"    -> 未满足得分阈值 {score_threshold}.")
 
         # 按照得分排序
         matches_found.sort(key=lambda x: x[3], reverse=True)
+
+        # 如果需要返回匹配结果，添加到总列表中
+        if return_matches:
+            all_matches.extend(matches_found)
 
         # 绘制所有满足阈值的匹配
         for small_img_name, box, display_name, score in matches_found:
@@ -417,16 +413,19 @@ def process_images(
         cv2.imwrite(output_path, result_img)
         print(f"结果已保存至: {output_path}\n")
 
+    # 如果需要返回匹配结果
+    if return_matches:
+        return all_matches
+    return None
+
 
 if __name__ == "__main__":
     # 设置文件夹路径
     input_folder = os.path.join(os.path.dirname(__file__), "input")  # 大图文件夹
-    pic_folder = os.path.join(os.path.dirname(__file__), "pic")  # 小图文件夹
-    csv_path = os.path.join(
-        os.path.dirname(__file__), "name_id.csv"
-    )  # ID到名称映射文件
+    pic_folder = config.small_fig_path  # 小图文件夹
+    csv_path = config.name_id_path  # ID到名称映射文件
     output_folder = os.path.join(os.path.dirname(__file__), "output")  # 结果输出文件夹
-    score_threshold = 0.3  # SIFT得分阈值 (knn match ratio) - 调整此值
+    score_threshold = config.sift_score_threshold  # SIFT得分阈值 (knn match ratio) - 调整此值
     # final_score_threshold = 0.5 # 可以增加一个最终RANSAC得分阈值，如果需要的话
     method_to_use = "sift"  # or 'orb'
 

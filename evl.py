@@ -1,15 +1,20 @@
 import math
 import os
 import re
+from datetime import datetime
 
+import cv2
 import gradio as gr
+import numpy as np
 import pandas as pd
-from paddleocr import PaddleOCR, draw_ocr
+from PIL import Image, ImageDraw, ImageFont
 
+import config
+from item_detection.detection import draw_matches, process_images
 from webjudger import WebJudger
 
-xlsx_file = os.path.join("database", "第五人格藏宝阁制作版.xlsx")
-df = pd.read_excel(xlsx_file, engine="openpyxl")
+csv_file = config.price_path
+df = pd.read_csv(csv_file)
 cards = []
 # 将 DataFrame 转换为字典列表
 cards = df.to_dict(orient="records")
@@ -41,76 +46,12 @@ def cmp(tex_a, tex_b):
     return False
 
 
-def making_words():
+def making_words(input_image_dir):
     global cards, boxes, txts, scores, ans, total, decc
     usd = {}
     decc = 1
-    # Paddleocr目前支持的多语言语种可以通过修改lang参数进行切换
-    # 例如`ch`, `en`, `fr`, `german`, `korean`, `japan`
-    ocr = PaddleOCR(
-        use_angle_cls=True,
-        lang="ch",
-        det_model_dir=os.path.join("pretrained_models", "ch_PP-OCRv4_det_infer"),
-        rec_model_dir=os.path.join("pretrained_models", "ch_PP-OCRv4_rec_infer"),
-        rec_char_dict_path=os.path.join("need", "ppocrv4_doc_dict.txt"),
-        use_gpu=True,
-        det_limit_side_len=4096,  # 控制检测模型输入图像的长边尺寸
-        det_limit_type="max",  # 按最长边缩放（保持宽高比）
-    )  # need to run only once to download and load model into memory
-    img_path = r"read.jpg"
 
-    # 读取图片并分割成高度为4000的块
-    from PIL import Image
-
-    image = Image.open(img_path)
-    width, height = image.size
-
-    # 计算需要分割的块数
-    max_height = 4000
-    num_chunks = math.ceil(height / max_height)
-
-    ########################
-    # 第一次识别
-    ########################
-
-    # 存储所有子图片的OCR结果
-    all_results = []
-
-    # 处理每个子图片
-    for i in range(num_chunks):
-        # 计算当前块的上下边界
-        top = i * max_height
-        bottom = min((i + 1) * max_height, height)
-
-        # 裁剪当前块
-        chunk = image.crop((0, top, width, bottom))
-        chunk_path = f"chunk_{i}.jpg"
-        chunk.save(chunk_path)
-
-        # 对当前块进行OCR
-        chunk_result = ocr.ocr(chunk_path, cls=True)
-
-        # 调整坐标以反映在原始图像中的位置
-        chunk_result = chunk_result[0]
-        if chunk_result and len(chunk_result) > 0:
-            for idx in range(len(chunk_result)):
-                res = chunk_result[idx]
-                box, (text, prob) = res
-                # 调整坐标，加上当前块在原图中的y偏移
-                adjusted_box = [[p[0], p[1] + top] for p in box]
-                adjusted_res = [adjusted_box, (text, prob)]
-                all_results.append(adjusted_res)
-
-        # 删除临时文件
-        os.remove(chunk_path)
-
-    result = [all_results]
-
-    for idx in range(len(result)):
-        res = result[idx]
-        for line in res:
-            print(line)
-
+    # 加载价格数据
     for card in cards:
         usd[card["name"]] = False
         if "price_new" in card:
@@ -126,203 +67,171 @@ def making_words():
         else:
             card["price_old"] = 0  # 如果缺失 price_new，则默认值为 0
 
-    # 显示结果
-    from PIL import Image
+    # 设置文件夹路径
+    # 大图文件夹
+    input_folder = input_image_dir
+    time_string = os.path.basename(os.path.normpath(input_image_dir))
+    pic_folder = config.small_fig_path  # 小图文件夹
+    csv_path = config.name_id_path  # ID到名称映射文件
+    output_folder = os.path.join(
+        os.path.dirname(__file__), "item_detection", "output"
+    )  # 结果输出文件夹
+    score_threshold = config.sift_score_threshold  # 匹配得分阈值
 
-    result = result[0]
-    image = Image.open(img_path).convert("RGB")
-    boxes = []
-    txts = []
-    scores = []
-    total = 0
-    boxes_tmp = [line[0] for line in result]
-    txts_tmp = [line[1][0] for line in result]
-    # scores_tmp = [line[1][1] for line in result]
-    for idx, name_now in enumerate(txts_tmp):
-        for card in cards:
-            if usd[card["name"]]:
-                continue
-            if cle(card["name"]) == cle(name_now):
-                total += card["price_new"]
-                decc *= 0.97
-                boxes.append(boxes_tmp[idx])
-                txts.append(txts_tmp[idx])
-                scores.append(card["price_new"])
-                usd[card["name"]] = True
-                break
-            elif cmp(cle(card["name"]), cle(name_now)):
-                total += card["price_new"]
-                decc *= 0.97
-                boxes.append(boxes_tmp[idx])
-                txts.append(card["name"])
-                scores.append(card["price_new"])
-                usd[card["name"]] = True
-                break
+    # 创建输出文件夹（如果不存在）
+    os.makedirs(input_folder, exist_ok=True)
+    os.makedirs(output_folder, exist_ok=True)
 
-    if len(txts) >= 1:
-        # --- 同步排序（按 scores 降序）---
-        combined = list(zip(scores, boxes, txts))  # 组合
-        combined_sorted = sorted(combined, key=lambda x: x, reverse=True)  # 排序
-        scores_sorted, boxes_sorted, txts_sorted = zip(*combined_sorted)  # 解包
-
-        # 覆盖原列表（转回列表类型）
-        scores = list(scores_sorted)
-        boxes = list(boxes_sorted)
-        txts = list(txts_sorted)
-
-    if decc <= 0.3:
-        decc = 0.3
-    decc = math.log10(10 * decc)
-    if decc <= 0.65:
-        decc = 0.65
-    ans = total * decc
-    ans = math.floor(ans)
-    decc = round(decc, 3)
-
-    txts.append("所标注皮肤总价格为")
-    scores.append(total)
-    txts.append("建议乘折扣系数")
-    scores.append(decc)
-    txts.append("得到基础价格")
-    scores.append(ans)
-    im_show = draw_ocr(image, boxes, txts, scores, font_path="./doc/fonts/simfang.ttf")
-    total_price_1 = total
-    im_show_1 = Image.fromarray(im_show)
-
-    ########################
-    # 第二次识别 , 偏移 offset = 100 再识别一次
-    ########################
-
-    # 存储所有子图片的OCR结果
-    all_results = []
-
-    # 处理每个子图片
-    for i in range(num_chunks):
-        # 计算当前块的上下边界
-        top = i * max_height + 100
-        bottom = min((i + 1) * max_height + 100, height)
-
-        # 裁剪当前块
-        chunk = image.crop((0, top, width, bottom))
-        chunk_path = f"chunk_{i}.jpg"
-        chunk.save(chunk_path)
-
-        # 对当前块进行OCR
-        chunk_result = ocr.ocr(chunk_path, cls=True)
-
-        # 调整坐标以反映在原始图像中的位置
-        chunk_result = chunk_result[0]
-        if chunk_result and len(chunk_result) > 0:
-            for idx in range(len(chunk_result)):
-                res = chunk_result[idx]
-                box, (text, prob) = res
-                # 调整坐标，加上当前块在原图中的y偏移
-                adjusted_box = [[p[0], p[1] + top] for p in box]
-                adjusted_res = [adjusted_box, (text, prob)]
-                all_results.append(adjusted_res)
-
-        # 删除临时文件
-        os.remove(chunk_path)
-
-    result = [all_results]
-
-    for idx in range(len(result)):
-        res = result[idx]
-        for line in res:
-            print(line)
-
+    # 调用detection.py中的处理函数
+    namelistnow = []
+    name_price = {}
     for card in cards:
-        usd[card["name"]] = False
-        if "price_new" in card:
-            # 将字符串转换为浮点数，再向下取整为整数
-            card["price_new"] = math.floor(float(card["price_new"]))
-        else:
-            card["price_new"] = 0  # 如果缺失 price_new，则默认值为 0
+        name_price[card["name"]] = card["price_new"]
 
-    for card in cards:
-        if "price_old" in card:
-            # 将字符串转换为浮点数，再向下取整为整数
-            card["price_old"] = math.floor(float(card["price_old"]))
-        else:
-            card["price_old"] = 0  # 如果缺失 price_new，则默认值为 0
+    # 处理图像
+    matches_found = process_images(
+        input_folder,
+        pic_folder,
+        csv_path,
+        output_folder,
+        score_threshold,
+        method="sift",
+        return_matches=True,
+    )
 
-    # 显示结果
-    from PIL import Image
-
-    result = result[0]
-    image = Image.open(img_path).convert("RGB")
-    boxes = []
-    txts = []
-    scores = []
-    total = 0
-    boxes_tmp = [line[0] for line in result]
-    txts_tmp = [line[1][0] for line in result]
-    # scores_tmp = [line[1][1] for line in result]
-    for idx, name_now in enumerate(txts_tmp):
-        for card in cards:
-            if usd[card["name"]]:
-                continue
-            if cle(card["name"]) == cle(name_now):
-                total += card["price_new"]
-                decc *= 0.97
-                boxes.append(boxes_tmp[idx])
-                txts.append(txts_tmp[idx])
-                scores.append(card["price_new"])
-                usd[card["name"]] = True
-                break
-            elif cmp(cle(card["name"]), cle(name_now)):
-                total += card["price_new"]
-                decc *= 0.97
-                boxes.append(boxes_tmp[idx])
-                txts.append(card["name"])
-                scores.append(card["price_new"])
-                usd[card["name"]] = True
-                break
-
-    if len(txts) >= 1:
-        # --- 同步排序（按 scores 降序）---
-        combined = list(zip(scores, boxes, txts))  # 组合
-        combined_sorted = sorted(combined, key=lambda x: x, reverse=True)  # 排序
-        scores_sorted, boxes_sorted, txts_sorted = zip(*combined_sorted)  # 解包
-
-        # 覆盖原列表（转回列表类型）
-        scores = list(scores_sorted)
-        boxes = list(boxes_sorted)
-        txts = list(txts_sorted)
-
-    if decc <= 0.3:
-        decc = 0.3
-    decc = math.log10(10 * decc)
-    if decc <= 0.65:
-        decc = 0.65
-    ans = total * decc
-    ans = math.floor(ans)
-    decc = round(decc, 3)
-
-    txts.append("所标注皮肤总价格为")
-    scores.append(total)
-    txts.append("建议乘折扣系数")
-    scores.append(decc)
-    txts.append("得到基础价格")
-    scores.append(ans)
-    im_show = draw_ocr(image, boxes, txts, scores, font_path="./doc/fonts/simfang.ttf")
-    total_price_2 = total
-    im_show_2 = Image.fromarray(im_show)
-
-    ########################
-    # 选择最高价
-    ########################
-
-    if total_price_1 > total_price_2:
-        total = total_price_1
-        im_show = im_show_1
+    # 按照匹配得分对结果进行排序
+    # matches_found 格式为 (small_img_name, box, display_name, score)
+    if matches_found:
+        # 按照得分（第4个元素，索引为3）降序排序
+        matches_found.sort(key=lambda x: x[3], reverse=True)
+        print(f"已按照匹配得分降序排序，共 {len(matches_found)} 个匹配项")
     else:
-        total = total_price_2
-        im_show = im_show_2
+        print("未找到任何匹配项")
 
-    print(f"total_price_1: {total_price_1}, total_price_2: {total_price_2}")
-    im_show.save("result.jpg")
-    return r"result.jpg"
+    # 处理匹配结果
+    total = 0
+    boxes = []
+    txts = []
+    scores = []
+
+    for small_img_name, box, display_name, score in matches_found:
+        if display_name in name_price:
+            total += name_price[display_name]
+            decc *= 0.97
+            boxes.append(box)
+            txts.append(display_name)
+            scores.append(name_price[display_name])
+            usd[display_name] = True
+            namelistnow.append(display_name)
+
+    # 计算折扣系数和最终价格
+    if decc <= 0.3:
+        decc = 0.3
+    decc = math.log10(10 * decc)
+    if decc <= 0.65:
+        decc = 0.65
+    ans = total * decc
+    ans = math.floor(ans)
+    decc = round(decc, 3)
+
+    # 为结果图像添加额外的文本信息
+    # 不再将这些信息添加到txts和scores列表中，而是直接在图片上绘制
+    # 这些信息将在后续代码中直接添加到图像上
+    summary_text = (
+        f"所标注皮肤总价格为: {total}\n建议乘折扣系数: {decc}\n得到基础价格: {ans}"
+    )
+
+    # 读取原始图像
+    image_path = os.path.join(input_image_dir, "0.jpg")
+    image = cv2.imread(image_path)
+
+    # 使用draw_matches函数绘制每个匹配项
+    result_img = image.copy()
+    for i, (box, txt, score) in enumerate(zip(boxes, txts, scores)):
+        # 确保box是有效的np.ndarray
+        if box is not None and isinstance(box, np.ndarray) and box.shape == (4, 1, 2):
+            # 使用draw_matches函数绘制边界框和文本
+            result_img = draw_matches(result_img, f"item_{i}", box, f"{txt}: {score}")
+
+    # 定义字体大小
+    font_size = 30
+    # 常见的中文字体列表
+    common_cjk_fonts = [
+        "simhei.ttf",
+        "msyh.ttf",
+        "simsun.ttc",  # Windows
+        "PingFang.ttc",
+        "STHeiti Light.ttc",
+        "Arial Unicode MS",  # macOS
+        "wqy-zenhei.ttc",
+        "NotoSansCJK-Regular.otf",
+        "DroidSansFallbackFull.ttf",  # Linux
+    ]
+
+    # 查找可用的中文字体
+    font = None
+    for font_name in common_cjk_fonts:
+        try:
+            font = ImageFont.truetype(font_name, font_size)
+            break
+        except IOError:
+            continue
+
+    # 获取原始图像尺寸
+    img_height, img_width = result_img.shape[:2]
+
+    # 创建一个更宽的画布，右侧放置文本信息
+    text_width = 500  # 文本区域宽度
+    canvas_width = img_width + text_width
+    canvas_height = img_height
+
+    # 创建新的画布（白色背景）
+    canvas = np.ones((canvas_height, canvas_width, 3), dtype=np.uint8) * 255
+
+    # 将原始图像放在左侧
+    canvas[:img_height, :img_width] = result_img
+
+    # 将OpenCV图像转换为PIL图像以支持中文
+    pil_canvas = Image.fromarray(cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB))
+    draw = ImageDraw.Draw(pil_canvas)
+
+    # 按照分数从高到低排序所有的txt和score
+    all_items = list(zip(txts, scores))
+    all_items.sort(key=lambda x: x[1], reverse=True)
+
+    # 添加所有文本信息
+    y_pos = 70
+    for i, (txt, score) in enumerate(all_items):
+        text = f"{i + 1}. {txt}: {score}"
+        if font:
+            draw.text((img_width + 20, y_pos), text, font=font, fill=(0, 0, 0))
+        y_pos += 40
+
+        # 如果文本超出画布底部，调整字体大小或增加画布高度
+        if y_pos > canvas_height - 40:
+            # 这里可以选择增加画布高度
+            new_canvas = np.ones((y_pos + 100, canvas_width, 3), dtype=np.uint8) * 255
+            new_canvas[:canvas_height, :canvas_width] = cv2.cvtColor(
+                np.array(pil_canvas), cv2.COLOR_RGB2BGR
+            )
+            canvas = new_canvas
+            pil_canvas = Image.fromarray(cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(pil_canvas)
+
+    # 最后输出 summary_text 中的文本信息
+    y_pos += 40
+    draw.text((img_width + 20, y_pos), summary_text, font=font, fill=(0, 0, 0))
+
+    # 将PIL图像转换回OpenCV格式
+    result_img = cv2.cvtColor(np.array(pil_canvas), cv2.COLOR_RGB2BGR)
+
+    # 保存结果图像
+    output_image_path = os.path.join(
+        os.path.dirname(__file__), "output", time_string, "result.jpg"
+    )
+    os.makedirs(os.path.dirname(output_image_path), exist_ok=True)
+    cv2.imwrite(output_image_path, result_img)
+    return output_image_path
 
 
 # def qwen_words():
@@ -366,8 +275,14 @@ def making_words():
 def process_image(input_image):
     # 生成描述文本
     global total, decc
-    input_image.save("read.jpg")
-    output_image = making_words()
+    time_string = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+    input_image_path = os.path.join(
+        os.path.dirname(__file__), "input", f"{time_string}", "0.jpg"
+    )
+    input_image_dir = os.path.dirname(input_image_path)
+    os.makedirs(input_image_dir, exist_ok=True)
+    input_image.save(input_image_path)
+    output_image = making_words(input_image_dir)
     # description = qwen_words()
     # if decc <= 0.7:
     #     decc = 0.7

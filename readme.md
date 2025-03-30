@@ -9,26 +9,17 @@
 
 # 临时环境搭建教程
 
-## 创建虚拟环境
+## 创建虚拟环境并安装依赖
 
 ```
 conda create -n cbg python=3.11
+conda activate cbg
+pip install -r requirements.txt
 ```
 
-## paddleocr安装教程：
+## 安装 paddleocr：
 
 https://paddlepaddle.github.io/PaddleOCR/latest/quick_start.html
-
-## 其他环境：
-
-```
-pip install pandas
-pip install openpyxl
-pip install gradio
-pip install flask
-pip install sqlalchemy
-pip install requests
-```
 
 ## qwen使用：
 

@@ -10,3 +10,11 @@ pretrained_models*
 *.bmp
 *.tiff
 *.webp
+
+# python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz

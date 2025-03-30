@@ -1,0 +1,6 @@
+pandas
+openpyxl
+gradio
+flask
+sqlalchemy
+requests

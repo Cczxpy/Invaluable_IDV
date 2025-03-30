@@ -1,6 +1,6 @@
 import os
 
-sift_score_threshold = 0.5
+sift_score_threshold = 0.6
 small_fig_path = os.path.join(os.path.dirname(__file__), "database", "pic")
 name_id_path = os.path.join(os.path.dirname(__file__), "database", "name_id.csv")
 price_path = os.path.join(

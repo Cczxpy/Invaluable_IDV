@@ -280,7 +280,6 @@ def process_images(
     input_folder,
     pic_folder,
     csv_path,
-    output_folder,
     score_threshold,
     method="sift",
     return_matches=False,
@@ -292,7 +291,6 @@ def process_images(
         input_folder (str): 大图所在文件夹.
         pic_folder (str): 小图所在文件夹.
         csv_path (str): CSV文件路径.
-        output_folder (str): 结果输出文件夹.
         score_threshold (float): 匹配得分阈值. Defaults to 0.7.
         method (str): 特征匹配方法 ('sift' or 'orb'). Defaults to 'sift'.
         return_matches (bool): 是否返回匹配结果. Defaults to False.
@@ -302,7 +300,7 @@ def process_images(
             每个匹配项是一个元组 (small_img_name, box, display_name, score).
     """
     # 确保输出文件夹存在
-    os.makedirs(output_folder, exist_ok=True)
+    # os.makedirs(output_folder, exist_ok=True)
 
     # 加载ID到名称的映射
     id_to_name = load_name_mapping(csv_path)
@@ -406,12 +404,12 @@ def process_images(
                     f"警告: 跳过绘制无效的边界框 for {display_name} in {large_img_name}."
                 )
 
-        # 保存结果图像
-        output_path = os.path.join(
-            output_folder, f"{large_img_name}_detected_{method}.jpg"
-        )  # Add method to filename
-        cv2.imwrite(output_path, result_img)
-        print(f"结果已保存至: {output_path}\n")
+        # # 保存结果图像
+        # output_path = os.path.join(
+        #     output_folder, f"{large_img_name}_detected_{method}.jpg"
+        # )  # Add method to filename
+        # cv2.imwrite(output_path, result_img)
+        # print(f"结果已保存至: {output_path}\n")
 
     # 如果需要返回匹配结果
     if return_matches:
@@ -428,7 +426,6 @@ if __name__ == "__main__":
     score_threshold = (
         config.sift_score_threshold
     )  # SIFT得分阈值 (knn match ratio) - 调整此值
-    # final_score_threshold = 0.5 # 可以增加一个最终RANSAC得分阈值，如果需要的话
     method_to_use = "sift"  # or 'orb'
 
     # 处理图像
@@ -436,7 +433,6 @@ if __name__ == "__main__":
         input_folder,
         pic_folder,
         csv_path,
-        output_folder,
         score_threshold,
         method=method_to_use,
     )  # Pass method

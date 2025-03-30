@@ -73,14 +73,7 @@ def making_words(input_image_dir):
     time_string = os.path.basename(os.path.normpath(input_image_dir))
     pic_folder = config.small_fig_path  # 小图文件夹
     csv_path = config.name_id_path  # ID到名称映射文件
-    output_folder = os.path.join(
-        os.path.dirname(__file__), "item_detection", "output"
-    )  # 结果输出文件夹
     score_threshold = config.sift_score_threshold  # 匹配得分阈值
-
-    # 创建输出文件夹（如果不存在）
-    os.makedirs(input_folder, exist_ok=True)
-    os.makedirs(output_folder, exist_ok=True)
 
     # 调用detection.py中的处理函数
     namelistnow = []
@@ -93,7 +86,6 @@ def making_words(input_image_dir):
         input_folder,
         pic_folder,
         csv_path,
-        output_folder,
         score_threshold,
         method="sift",
         return_matches=True,

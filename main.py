@@ -73,7 +73,6 @@ def making_words(input_image_dir):
     time_string = os.path.basename(os.path.normpath(input_image_dir))
     pic_folder = config.small_fig_path  # 小图文件夹
     csv_path = config.name_id_path  # ID到名称映射文件
-    score_threshold = config.sift_score_threshold  # 匹配得分阈值
 
     # 调用detection.py中的处理函数
     namelistnow = []
@@ -86,8 +85,6 @@ def making_words(input_image_dir):
         input_folder,
         pic_folder,
         csv_path,
-        score_threshold,
-        method="sift",
         return_matches=True,
     )
 

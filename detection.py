@@ -334,7 +334,10 @@ def calculate_iou(box1, box2):
 
 
 def is_rectangle_like(
-    box, aspect_ratio_threshold=3.0, angle_threshold=30.0, min_area_ratio=0.65
+    box,
+    aspect_ratio_threshold=config.aspect_ratio_threshold,
+    angle_threshold=config.angle_threshold,
+    min_area_ratio=config.min_area_ratio,
 ):
     """
     判断边界框是否接近矩形

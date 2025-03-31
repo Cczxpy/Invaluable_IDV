@@ -4,3 +4,4 @@ gradio
 flask
 sqlalchemy
 requests
+opencv-python

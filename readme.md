@@ -8,6 +8,11 @@
 
 # 临时环境搭建教程
 
+##  前置知识
+可以搜索anaconda或者miniconda教程
+
+为vscode装上anaconda或者miniconda来管理虚拟环境
+
 ## 创建虚拟环境并安装依赖
 
 ```

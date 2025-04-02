@@ -24,8 +24,8 @@ Developer:
     ```bash
     git clone git@github.com:Cczxpy/Invaluable_IDV.git
     ```
-    > [!IMPORTANT]
-    > 请不要把仓库放到有中文的目录下, 可能会导致文件读取失败, 比如 `C:\Users\小绵羊\Desktop\Invaluable_IDV` 就是含有中文的目录.
+> [!IMPORTANT]
+> 请不要把仓库放到有中文的目录下, 可能会导致文件读取失败, 比如 `C:\Users\小绵羊\Desktop\Invaluable_IDV` 就是含有中文的目录.
 
 3. 进入仓库目录:
 

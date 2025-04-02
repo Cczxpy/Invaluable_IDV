@@ -1,19 +1,39 @@
-# 项目使用须知
+# Invaluable_IDV: 第五人格估价器
 
-该项目由b站up主Cc专心破译设计，并与多为志同道合的大佬完成后续开发，代码仅供学习交流使用，禁止商用，包括但不限于售卖、盈利性估价、直播等。
+一个基于账号图鉴或者网易大神外部链接的第五人格估价器，可以估计账号内所有物品的大致价值。
 
-项目基于本地数据库制作，已在database中设置一个例子，由于价格具有时效性，所以不要盲目直接使用该项目进行估价。
+## 项目声明
 
-启动项目后会生成一个网页，可以拖入图片进入该网页实现自动估价与标注
+本项目由 `b站up主Cc专心破译设计` 设计，并与多位志同道合的大佬完成后续开发，代码仅供学习交流使用，禁止商用，包括但不限于售卖、盈利性估价、直播等。
 
-# 临时环境搭建教程
+项目基于本地数据库制作，所有使用的数据均保存在 `database` 文件夹中，由于价格具有时效性，所以不要盲目直接使用该项目进行估价。
 
-##  前置知识
-可以搜索anaconda或者miniconda教程
+Developer:
 
-为vscode装上anaconda或者miniconda来管理虚拟环境
+1. [@Cc专心破译](https://space.bilibili.com/438331902)
+2. [EmptyBlue](www.lyt0112.com)
 
-## 创建虚拟环境并安装依赖
+## 使用说明
+
+### 前置依赖
+
+1. 安装 [Miniconda](https://www.anaconda.com/docs/getting-started/miniconda/main) 来管理虚拟环境, 一个 [Miniconda 安装教程](https://www.cnblogs.com/jijunhao/p/17235904.html)
+
+2. 然后下载该仓库或 `clone`:
+
+    ```bash
+    git clone git@github.com:Cczxpy/Invaluable_IDV.git
+    ```
+    > [!IMPORTANT]
+    > 请不要把仓库放到有中文的目录下, 可能会导致文件读取失败, 比如 `C:\Users\小绵羊\Desktop\Invaluable_IDV` 就是含有中文的目录.
+
+3. 进入仓库目录:
+
+    ```bash
+    cd Invaluable_IDV
+    ```
+
+### 创建虚拟环境并安装依赖
 
 ```
 conda create -n cbg python=3.11
@@ -21,16 +41,9 @@ conda activate cbg
 pip install -r requirements.txt
 ```
 
-## Usage
+### 运行
 
-根据 `config.py` 文件设置数据库信息 (或者根据数据库位置设置 `config` 的信息):
-
-1. 在 `database` 文件夹中创建 `pic` 文件夹, 并放入小图.
-2. 在 `database` 文件夹中创建 `name_id.csv` 文件, 并放入小图ID与名称的映射关系.
-3. 在 `database` 文件夹中创建 `第五人格藏宝阁制作版2025年3月30日.xlsx` 文件, 并放入藏宝阁数据.
-4. 在 `database` 文件夹中创建 `cloth.csv` 文件, 并放入侦探服装数据.
-
-然后运行 `main.py` 文件, 即可开始估价.
+运行 `main.py` 文件, 即可开始估价.
 
 ```
 python main.py
@@ -38,13 +51,16 @@ python main.py
 
 开启网页客户端后, 上传的图片会保存在 `input/<时间戳>` 文件夹中, 经过模式匹配后保存在 `output/<同一个时间戳>` 文件夹下.
 
-## 特征提取技术
+## 账号图鉴特征提取技术
 
 > [!NOTE]
 > 为什么不使用神经网络？
 > 
 > 1. 本项目不要求图像识别具有良好的泛化性, 只需要模版匹配即可
 > 2. 神经网络的训练需要大量数据, 而本项目的数据量较小, 容易造成过拟合
+
+> [!NOTE]
+> 经过测试, 使用 VLM 比如 `GPT-4o`, `Claude 3.7 Sonnet`, `Gemini 2.5 Pro` 等大模型 zero-shot 识别账号图鉴中有哪些皮肤效果对图片的清晰度和大小都比当前方法更加鲁棒, 但是囿于 VLM API 的使用成本, 暂时还没有使用, 但是如果后期该项目有收入, 可以考虑部署到网站并且使用商业 VLM 来识别.
 
 本项目主要采用基于特征点的图像匹配技术来识别游戏截图中的物品图标。具体步骤如下：
 
@@ -59,8 +75,4 @@ python main.py
 
 ## 二次开发
 
-如果您对这个项目感兴趣，欢迎一起完善本项目。我的微信号是
-```
-itctlsssr
-```
-欢迎添加我的微信，并成为开发团队的一员。
+如果您对这个项目感兴趣，欢迎一起完善本项目。我的微信号是 `itctlsssr` 欢迎添加我的微信，并成为开发团队的一员。

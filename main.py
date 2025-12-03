@@ -14,6 +14,93 @@ from app.detection import draw_matches, process_images
 from app.webjudger import WebJudger
 import requests
 import os
+import subprocess
+import threading
+import time
+
+# 全局变量，用于存储进程
+frontend_process = None
+crawler_process = None
+
+
+def start_frontend():
+    """启动前端展示服务"""
+    global frontend_process
+    
+    if frontend_process and frontend_process.poll() is None:
+        return "前端服务已在运行中！"
+    
+    try:
+        # 使用配置中的脚本路径
+        cmd = ["python", config.frontend_script_path]
+        # 启动前端服务，使用subprocess.Popen使其在后台运行
+        frontend_process = subprocess.Popen(cmd, cwd=config.PROJECT_ROOT)
+        time.sleep(2)  # 等待服务启动
+        
+        if frontend_process.poll() is None:
+            return "前端服务已成功启动！\n访问地址: http://127.0.0.1:5050"
+        else:
+            return f"前端服务启动失败！退出码: {frontend_process.returncode}"
+    except Exception as e:
+        return f"启动前端服务时出错: {str(e)}"
+
+
+
+def start_crawler():
+    """启动爬虫服务"""
+    global crawler_process
+    
+    if crawler_process and crawler_process.poll() is None:
+        return "爬虫服务已在运行中！"
+    
+    try:
+        # 使用配置中的脚本路径
+        cmd = ["python", config.crawler_script_path]
+        # 启动爬虫服务，使用subprocess.Popen使其在后台运行
+        crawler_process = subprocess.Popen(cmd, cwd=config.PROJECT_ROOT)
+        time.sleep(2)  # 等待服务启动
+        
+        if crawler_process.poll() is None:
+            return "爬虫服务已成功启动！\n请查看终端输出获取详细信息"
+        else:
+            return f"爬虫服务启动失败！退出码: {crawler_process.returncode}"
+    except Exception as e:
+        return f"启动爬虫服务时出错: {str(e)}"
+
+
+
+def stop_frontend():
+    """停止前端展示服务"""
+    global frontend_process
+    
+    if frontend_process and frontend_process.poll() is None:
+        frontend_process.terminate()
+        frontend_process.wait()
+        return "前端服务已成功停止！"
+    else:
+        return "前端服务未在运行中！"
+
+
+
+def stop_crawler():
+    """停止爬虫服务"""
+    global crawler_process
+    
+    if crawler_process and crawler_process.poll() is None:
+        crawler_process.terminate()
+        crawler_process.wait()
+        return "爬虫服务已成功停止！"
+    else:
+        return "爬虫服务未在运行中！"
+
+
+
+def check_status():
+    """检查服务状态"""
+    frontend_status = "运行中" if (frontend_process and frontend_process.poll() is None) else "未运行"
+    crawler_status = "运行中" if (crawler_process and crawler_process.poll() is None) else "未运行"
+    
+    return f"前端服务状态: {frontend_status}\n爬虫服务状态: {crawler_status}"
 
 # 检查并下载未下载的图片
 def check_and_download_images():
@@ -132,9 +219,7 @@ def making_words(input_image_dir):
     time_string = os.path.basename(os.path.normpath(input_image_dir))
     pic_folder = config.small_fig_path  # 小图文件夹
     csv_path = config.name_id_path  # ID到名称映射文件
-    output_folder = os.path.join(
-        os.path.dirname(__file__), "item_detection", "output"
-    )  # 结果输出文件夹
+    output_folder = config.item_detection_output_path  # 结果输出文件夹
     score_threshold = config.sift_score_threshold  # 匹配得分阈值
 
     # 创建输出文件夹（如果不存在）
@@ -224,7 +309,7 @@ def making_words(input_image_dir):
 
     # 保存只包含边界框和位置名称标注的结果图像
     output_image_path = os.path.join(
-        os.path.dirname(__file__), "output", time_string, "result.jpg"
+        config.result_output_path, time_string, "result.jpg"
     )
     os.makedirs(os.path.dirname(output_image_path), exist_ok=True)
     cv2.imwrite(output_image_path, result_img)
@@ -274,7 +359,7 @@ def process_image(input_image):
     global total, decc
     time_string = datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
     input_image_path = os.path.join(
-        os.path.dirname(__file__), "input", f"{time_string}", "0.jpg"
+        config.input_image_path, f"{time_string}", "0.jpg"
     )
     input_image_dir = os.path.dirname(input_image_path)
     os.makedirs(input_image_dir, exist_ok=True)
@@ -322,6 +407,37 @@ with gr.Blocks() as demo:
         with gr.Row():
             web_output = gr.Textbox(label="亮点标注")
         web_button.click(webslayer, inputs=web_input_new, outputs=web_output)
+
+    with gr.Tab("服务控制", id=3):
+        gr.Markdown("""
+        # CBG Identity Evaluation
+        提供前端展示和爬虫服务的启动控制
+        """)
+        
+        with gr.Row():
+            with gr.Column(scale=1):
+                gr.Markdown("## 前端展示服务")
+                frontend_btn = gr.Button("启动前端", variant="primary")
+                frontend_stop_btn = gr.Button("停止前端")
+                frontend_status = gr.Textbox(label="前端状态", placeholder="点击启动按钮启动前端服务")
+            
+            with gr.Column(scale=1):
+                gr.Markdown("## 爬虫服务")
+                crawler_btn = gr.Button("启动爬虫", variant="primary")
+                crawler_stop_btn = gr.Button("停止爬虫")
+                crawler_status = gr.Textbox(label="爬虫状态", placeholder="点击启动按钮启动爬虫服务")
+    
+        status_btn = gr.Button("检查服务状态")
+        overall_status = gr.Textbox(label="整体状态", placeholder="点击检查状态按钮查看服务状态")
+    
+        # 设置按钮点击事件
+        frontend_btn.click(fn=start_frontend, outputs=frontend_status)
+        frontend_stop_btn.click(fn=stop_frontend, outputs=frontend_status)
+        
+        crawler_btn.click(fn=start_crawler, outputs=crawler_status)
+        crawler_stop_btn.click(fn=stop_crawler, outputs=crawler_status)
+        
+        status_btn.click(fn=check_status, outputs=overall_status)
 
 # 运行应用
 demo.launch(server_name="localhost", server_port=7060)

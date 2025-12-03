@@ -4,3 +4,6 @@ gradio
 flask
 sqlalchemy
 requests
+playwright
+beautifulsoup4
+lxml

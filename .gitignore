@@ -3,6 +3,7 @@
 
 # Binary files
 pretrained_models*
+*.mp4
 *.jpg
 *.png
 *.jpeg

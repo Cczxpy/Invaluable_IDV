@@ -9,12 +9,71 @@ import numpy as np
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 
-import config
-from detection import draw_matches, process_images
-from webjudger import WebJudger
+from app import config
+from app.detection import draw_matches, process_images
+from app.webjudger import WebJudger
+import requests
+import os
 
+# 检查并下载未下载的图片
+def check_and_download_images():
+    print("正在检查并下载未下载的图片...")
+    
+    # 定义文件路径
+    final_maker_path = config.name_id_path  # 使用配置中的路径
+    pic_folder = config.small_fig_path  # 使用配置中的pic文件夹路径
+    
+    # 创建pic文件夹（如果不存在）
+    if not os.path.exists(pic_folder):
+        os.makedirs(pic_folder)
+        print(f"创建文件夹成功: {pic_folder}")
+    
+    # 读取final_maker.csv文件
+    df = pd.read_csv(final_maker_path, encoding='gbk')
+    
+    # 过滤出有id和path_to_cbg的数据
+    df = df[df['id'].notna() & df['path_to_cbg'].notna()]
+    
+    # 检查并下载图片
+    downloaded_count = 0
+    for index, row in df.iterrows():
+        try:
+            # 获取id和图片URL
+            img_id = str(int(float(row['id'])))
+            img_url = row['path_to_cbg']
+            
+            # 构建保存路径
+            save_path = os.path.join(pic_folder, f"{img_id}.png")
+            
+            # 检查文件是否已存在
+            if os.path.exists(save_path):
+                continue
+            
+            # 下载图片
+            response = requests.get(img_url, timeout=10)
+            response.raise_for_status()  # 检查请求是否成功
+            
+            # 保存图片
+            with open(save_path, 'wb') as f:
+                f.write(response.content)
+            
+            downloaded_count += 1
+            print(f"已下载新图片: {img_id}.png")
+            
+        except Exception as e:
+            print(f"下载图片失败: {img_id}, 错误: {e}")
+    
+    if downloaded_count > 0:
+        print(f"图片检查完成，共下载 {downloaded_count} 张新图片")
+    else:
+        print("图片检查完成，所有图片已存在")
+
+# 在启动时检查并下载图片
+check_and_download_images()
+
+# 继续加载配置和数据
 csv_file = config.price_path
-df = pd.read_csv(csv_file)
+df = pd.read_csv(csv_file, encoding='gbk')
 cards = []
 # 将 DataFrame 转换为字典列表
 cards = df.to_dict(orient="records")
@@ -73,6 +132,14 @@ def making_words(input_image_dir):
     time_string = os.path.basename(os.path.normpath(input_image_dir))
     pic_folder = config.small_fig_path  # 小图文件夹
     csv_path = config.name_id_path  # ID到名称映射文件
+    output_folder = os.path.join(
+        os.path.dirname(__file__), "item_detection", "output"
+    )  # 结果输出文件夹
+    score_threshold = config.sift_score_threshold  # 匹配得分阈值
+
+    # 创建输出文件夹（如果不存在）
+    os.makedirs(input_folder, exist_ok=True)
+    os.makedirs(output_folder, exist_ok=True)
 
     # 调用detection.py中的处理函数
     namelistnow = []
@@ -85,9 +152,11 @@ def making_words(input_image_dir):
         input_folder,
         pic_folder,
         csv_path,
+        output_folder,
+        score_threshold,
+        method="sift",
         return_matches=True,
     )
-
     # 按照匹配得分对结果进行排序
     # matches_found 格式为 (small_img_name, box, display_name, score)
     if matches_found:
@@ -123,104 +192,43 @@ def making_words(input_image_dir):
     ans = math.floor(ans)
     decc = round(decc, 3)
 
-    # 为结果图像添加额外的文本信息
-    # 不再将这些信息添加到txts和scores列表中，而是直接在图片上绘制
-    # 这些信息将在后续代码中直接添加到图像上
+    # 构建summary_text
     summary_text = (
         f"所标注皮肤总价格为: {total}\n建议乘折扣系数: {decc}\n得到基础价格: {ans}"
     )
+
+    # 构建description，包含所有皮肤信息
+    description = "当前所标注高价值皮肤有：\n"
+    
+    # 按照分数从高到低排序所有的txt和score
+    all_items = list(zip(txts, scores))
+    all_items.sort(key=lambda x: x[1], reverse=True)
+    
+    for i, (txt, score) in enumerate(all_items):
+        description += f"{i + 1}   {txt}:    {score}\n"
+    
+    # 添加summary_text到description
+    description += f"\n{summary_text}"
 
     # 读取原始图像
     image_path = os.path.join(input_image_dir, "0.jpg")
     image = cv2.imread(image_path)
 
-    # 使用draw_matches函数绘制每个匹配项
+    # 使用draw_matches函数绘制每个匹配项，只添加边界框和位置名称标注
     result_img = image.copy()
     for i, (box, txt, score) in enumerate(zip(boxes, txts, scores)):
         # 确保box是有效的np.ndarray
         if box is not None and isinstance(box, np.ndarray) and box.shape == (4, 1, 2):
-            # 使用draw_matches函数绘制边界框和文本
-            result_img = draw_matches(result_img, f"item_{i}", box, f"{txt}: {score}")
+            # 使用draw_matches函数绘制边界框和文本，只显示名称
+            result_img = draw_matches(result_img, f"item_{i}", box, f"{txt}")
 
-    # 定义字体大小
-    font_size = 30
-    # 常见的中文字体列表
-    common_cjk_fonts = [
-        "simhei.ttf",
-        "msyh.ttf",
-        "simsun.ttc",  # Windows
-        "PingFang.ttc",
-        "STHeiti Light.ttc",
-        "Arial Unicode MS",  # macOS
-        "wqy-zenhei.ttc",
-        "NotoSansCJK-Regular.otf",
-        "DroidSansFallbackFull.ttf",  # Linux
-    ]
-
-    # 查找可用的中文字体
-    font = None
-    for font_name in common_cjk_fonts:
-        try:
-            font = ImageFont.truetype(font_name, font_size)
-            break
-        except IOError:
-            continue
-
-    # 获取原始图像尺寸
-    img_height, img_width = result_img.shape[:2]
-
-    # 创建一个更宽的画布，右侧放置文本信息
-    text_width = 500  # 文本区域宽度
-    canvas_width = img_width + text_width
-    canvas_height = img_height
-
-    # 创建新的画布（白色背景）
-    canvas = np.ones((canvas_height, canvas_width, 3), dtype=np.uint8) * 255
-
-    # 将原始图像放在左侧
-    canvas[:img_height, :img_width] = result_img
-
-    # 将OpenCV图像转换为PIL图像以支持中文
-    pil_canvas = Image.fromarray(cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB))
-    draw = ImageDraw.Draw(pil_canvas)
-
-    # 按照分数从高到低排序所有的txt和score
-    all_items = list(zip(txts, scores))
-    all_items.sort(key=lambda x: x[1], reverse=True)
-
-    # 添加所有文本信息
-    y_pos = 70
-    for i, (txt, score) in enumerate(all_items):
-        text = f"{i + 1}. {txt}: {score}"
-        if font:
-            draw.text((img_width + 20, y_pos), text, font=font, fill=(0, 0, 0))
-        y_pos += 40
-
-        # 如果文本超出画布底部，调整字体大小或增加画布高度
-        if y_pos > canvas_height - 40:
-            # 这里可以选择增加画布高度
-            new_canvas = np.ones((y_pos + 100, canvas_width, 3), dtype=np.uint8) * 255
-            new_canvas[:canvas_height, :canvas_width] = cv2.cvtColor(
-                np.array(pil_canvas), cv2.COLOR_RGB2BGR
-            )
-            canvas = new_canvas
-            pil_canvas = Image.fromarray(cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB))
-            draw = ImageDraw.Draw(pil_canvas)
-
-    # 最后输出 summary_text 中的文本信息
-    y_pos += 40
-    draw.text((img_width + 20, y_pos), summary_text, font=font, fill=(0, 0, 0))
-
-    # 将PIL图像转换回OpenCV格式
-    result_img = cv2.cvtColor(np.array(pil_canvas), cv2.COLOR_RGB2BGR)
-
-    # 保存结果图像
+    # 保存只包含边界框和位置名称标注的结果图像
     output_image_path = os.path.join(
         os.path.dirname(__file__), "output", time_string, "result.jpg"
     )
     os.makedirs(os.path.dirname(output_image_path), exist_ok=True)
     cv2.imwrite(output_image_path, result_img)
-    return output_image_path
+    return output_image_path, description
 
 
 # def qwen_words():
@@ -271,18 +279,9 @@ def process_image(input_image):
     input_image_dir = os.path.dirname(input_image_path)
     os.makedirs(input_image_dir, exist_ok=True)
     input_image.save(input_image_path)
-    output_image = making_words(input_image_dir)
-    # description = qwen_words()
-    # if decc <= 0.7:
-    #     decc = 0.7
-    # decc = math.log10(10*decc)
-    # if decc <=0.87:
-    #     decc = 0.87
-    # ans = total * decc
-    # ans = math.floor(ans)
-    description = (
-        f"图中所标注皮肤总价格为{total}建议乘折扣系数{decc}，因此我给出基础价格：{ans}"
-    )
+    output_image_path, description = making_words(input_image_dir)
+    output_image = Image.open(output_image_path)
+
     return description, output_image
 
 
@@ -312,6 +311,7 @@ with gr.Blocks() as demo:
         query_button.click(
             process_image, inputs=image_input, outputs=[text_output, image_output]
         )
+
     with gr.Tab("链接估价", id=2):
         gr.Markdown("# 藏宝阁AI价格预测（发送藏宝阁号链接即可）")
 

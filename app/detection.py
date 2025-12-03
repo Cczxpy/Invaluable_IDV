@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 
-import config
+from . import config
 
 
 def load_name_mapping(csv_path):
@@ -18,10 +18,12 @@ def load_name_mapping(csv_path):
     返回:
     - id_to_name (dict): ID到名称的映射字典
     """
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, encoding='gbk')
     id_to_name = {}
     for _, row in df.iterrows():
-        id_to_name[str(row["id"])] = row["name"]
+        # 检查id是否为有效值，跳过NaN值
+        if pd.notna(row["id"]):
+            id_to_name[str(int(row["id"]))] = row["name"]
     return id_to_name
 
 
@@ -54,10 +56,11 @@ def feature_matching(
     des1=None,
     kp2=None,
     des2=None,
-    threshold=0.7,  # Lowe的比率测试(ratio test)
+    method="sift",
+    threshold=0.7,
 ):
     """
-    使用特征匹配找到大图中的小图位置, 可选地使用缓存的特征点和描述符, 并进行几何有效性检查.
+    使用特征匹配找到大图中的小图位置, 可选地使用缓存的特征点和描述符.
 
     Args:
         large_img (np.ndarray, shape=(H, W, 3)): 大图像 (BGR format).
@@ -66,14 +69,14 @@ def feature_matching(
         des1 (np.ndarray, optional): 小图的预计算描述符. Defaults to None.
         kp2 (list of cv2.KeyPoint, optional): 大图的预计算关键点. Defaults to None.
         des2 (np.ndarray, optional): 大图的预计算描述符. Defaults to None.
+        method (str): 使用的特征检测方法，'sift'或'orb'. Defaults to 'sift'.
         threshold (float): 特征匹配的阈值. Defaults to 0.7.
-
 
     Returns:
         tuple: 包含以下元素的元组:
             - matched (bool): 是否找到匹配.
             - box (np.ndarray or None): 匹配区域的边界框坐标 [[x1,y1],[x2,y2],[x3,y3],[x4,y4]], 如果未找到匹配则为 None.
-            - score (float): 匹配的置信度分数 (内点比例).
+            - score (float): 匹配的置信度分数.
             - kp1 (list of cv2.KeyPoint): 计算或传入的小图关键点.
             - des1 (np.ndarray): 计算或传入的小图描述符.
             - kp2 (list of cv2.KeyPoint): 计算或传入的大图关键点.
@@ -84,7 +87,10 @@ def feature_matching(
     small_gray = cv2.cvtColor(small_img, cv2.COLOR_BGR2GRAY)
 
     # 特征检测器
-    detector = cv2.SIFT_create()
+    if method == "sift":
+        detector = cv2.SIFT_create()
+    else:  # 使用ORB
+        detector = cv2.ORB_create(nfeatures=2000)
 
     # 检测关键点和描述符 (如果未提供)
     if kp1 is None or des1 is None:
@@ -94,54 +100,51 @@ def feature_matching(
 
     # 如果没有足够的特征点，返回匹配失败
     if des1 is None or des2 is None or len(kp1) < 4 or len(kp2) < 4:
-        print("特征点不足")  # Debug
         return False, None, 0, kp1, des1, kp2, des2
 
     # 特征匹配
-    # SIFT 使用 BFMatcher 和 knnMatch + ratio test
-    matcher = cv2.BFMatcher()
-    # 确保 des1 和 des2 是 float32 类型
-    if des1.dtype != np.float32:
-        des1 = des1.astype(np.float32)
-    if des2.dtype != np.float32:
-        des2 = des2.astype(np.float32)
-
-    # 检查描述符维度是否匹配
-    if des1.shape[1] != des2.shape[1]:
-        print(f"    错误: 描述符维度不匹配 - des1: {des1.shape}, des2: {des2.shape}")
-        return False, None, 0, kp1, des1, kp2, des2
-
-    try:
+    if method == "sift":
+        # SIFT 使用 BFMatcher 和 knnMatch + ratio test
+        matcher = cv2.BFMatcher()
+        # 确保 des1 和 des2 是 float32 类型
+        if des1.dtype != np.float32:
+            des1 = des1.astype(np.float32)
+        if des2.dtype != np.float32:
+            des2 = des2.astype(np.float32)
         matches = matcher.knnMatch(des1, des2, k=2)
-    except cv2.error as e:
-        print(f"    knnMatch 错误: {e}")
-        print(f"    des1 shape: {des1.shape}, dtype: {des1.dtype}")
-        print(f"    des2 shape: {des2.shape}, dtype: {des2.dtype}")
-        return False, None, 0, kp1, des1, kp2, des2
 
-    # 应用比率测试筛选良好匹配
-    good_matches = []
-    # 检查 matches 是否为空以及每个元素是否有足够的长度
-    if matches and all(len(m) >= 2 for m in matches):  # 确保至少有2个匹配
-        for m_pair in matches:
-            # 检查 m_pair 的长度，以防万一只有1个匹配
-            if len(m_pair) == 2:
-                m, n = m_pair
+        # 应用比率测试筛选良好匹配
+        good_matches = []
+        # 检查 matches 是否为空以及每个元素是否有足够的长度
+        if matches and all(len(m) == 2 for m in matches):
+            for m, n in matches:
                 if m.distance < threshold * n.distance:
                     good_matches.append(m)
-            elif len(m_pair) == 1:
-                # 如果k=2但只返回一个匹配，我们可以根据情况决定是否包含它
-                # 这里我们选择忽略它，因为比率测试需要两个邻居
-                pass
-    else:
-        # 如果knnMatch返回的匹配不足，则认为没有好的匹配
-        print("    knnMatch 返回的匹配不足或格式不正确")  # Debug
-        return False, None, 0, kp1, des1, kp2, des2
+        else:
+            # 如果knnMatch返回的匹配不足，则认为没有好的匹配
+            return False, None, 0, kp1, des1, kp2, des2
+    else:  # 使用ORB
+        # ORB 使用 BFMatcher 和 NORM_HAMMING + crossCheck
+        matcher = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+        # 确保 des1 和 des2 是 uint8 类型
+        if des1.dtype != np.uint8:
+            des1 = des1.astype(np.uint8)
+        if des2.dtype != np.uint8:
+            des2 = des2.astype(np.uint8)
+        matches = matcher.match(des1, des2)
+
+        # 根据距离排序筛选良好匹配
+        matches = sorted(matches, key=lambda x: x.distance)
+        # ORB 的阈值通常需要调整，这里假设 threshold 适用于距离排序后的比例
+        # 或者可以直接使用固定数量的匹配
+        num_good_matches = max(
+            10, int(len(matches) * 0.15)
+        )  # 例如取最好的15%或至少10个
+        good_matches = matches[:num_good_matches]
 
     # 如果良好匹配数量不足，返回匹配失败
-    min_match_count = config.min_match_count
+    min_match_count = 10
     if len(good_matches) < min_match_count:
-        print(f"    良好匹配数量不足: {len(good_matches)} < {min_match_count}")  # Debug
         return False, None, 0, kp1, des1, kp2, des2
 
     # 提取匹配点的坐标
@@ -152,38 +155,17 @@ def feature_matching(
     M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
 
     # 如果找不到有效的单应性矩阵，返回匹配失败
-    if M is None or mask is None:
-        print("    找不到有效的单应性矩阵")  # Debug
+    if M is None or mask is None:  # 增加对 mask 的检查
         return False, None, 0, kp1, des1, kp2, des2
 
     # 计算小图在大图中的边界框
-    h_small, w_small = small_gray.shape
-    pts = np.float32(
-        [[0, 0], [0, h_small - 1], [w_small - 1, h_small - 1], [w_small - 1, 0]]
-    ).reshape(-1, 1, 2)
-    try:
-        dst = cv2.perspectiveTransform(pts, M)
-    except cv2.error as e:
-        print(f"    perspectiveTransform 错误: {e}")  # Debug
-        return False, None, 0, kp1, des1, kp2, des2
-
-    # 检查 dst 是否有效
-    if dst is None or not isinstance(dst, np.ndarray) or dst.shape != (4, 1, 2):
-        print("    dst 计算无效")  # Debug
-        return False, None, 0, kp1, des1, kp2, des2
-
-    # 添加形状检测
-    if not is_rectangle_like(dst):
-        print("    形状检测失败: 匹配区域不像矩形")
-        return False, None, 0, kp1, des1, kp2, des2
+    h, w = small_gray.shape
+    pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
+    dst = cv2.perspectiveTransform(pts, M)
 
     # 计算匹配得分（内点占比）
     score = mask.sum() / len(mask) if mask is not None and len(mask) > 0 else 0
-    score = score * len(good_matches)
 
-    print(
-        f"    匹配成功! Score: {score:.2f}, 匹配点数: {len(good_matches)}/{len(matches)}, 内点数: {mask.sum()}/{len(mask)}"
-    )  # Debug
     return True, dst, score, kp1, des1, kp2, des2
 
 
@@ -201,6 +183,7 @@ def draw_matches(large_img, small_img_name, box, name):
     - img_with_box (np.ndarray): 带有边界框和名称的图像 (BGR format).
     """
     img_with_box = large_img.copy()
+
 
     # 绘制边界框 (使用OpenCV)
     box_int = np.int32(box)  # Convert box coordinates to integer
@@ -296,146 +279,34 @@ def draw_matches(large_img, small_img_name, box, name):
     return img_with_box
 
 
-def calculate_iou(box1, box2):
-    """
-    计算两个四边形的交并比(IoU)
-
-    参数:
-    - box1 (np.ndarray, shape=(4, 1, 2)): 第一个边界框坐标 [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]
-    - box2 (np.ndarray, shape=(4, 1, 2)): 第二个边界框坐标 [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]
-
-    返回:
-    - iou (float): 两个边界框的IoU值
-    """
-    # 将坐标转换为cv2.contour格式
-    box1_contour = box1.reshape(-1, 2).astype(np.int32)
-    box2_contour = box2.reshape(-1, 2).astype(np.int32)
-
-    # 创建二值化图像来计算交集和并集
-    width = max(np.max(box1_contour[:, 0]), np.max(box2_contour[:, 0])) + 10
-    height = max(np.max(box1_contour[:, 1]), np.max(box2_contour[:, 1])) + 10
-
-    box1_mask = np.zeros((height, width), dtype=np.uint8)
-    box2_mask = np.zeros((height, width), dtype=np.uint8)
-
-    # 填充多边形
-    cv2.fillPoly(box1_mask, [box1_contour], 1)
-    cv2.fillPoly(box2_mask, [box2_contour], 1)
-
-    # 计算交集和并集
-    intersection = np.logical_and(box1_mask, box2_mask).sum()
-    union = np.logical_or(box1_mask, box2_mask).sum()
-
-    # 计算IoU
-    if union == 0:
-        return 0.0
-
-    return intersection / union
-
-
-def is_rectangle_like(
-    box,
-    aspect_ratio_threshold=config.aspect_ratio_threshold,
-    angle_threshold=config.angle_threshold,
-    min_area_ratio=config.min_area_ratio,
+def process_images(
+    input_folder,
+    pic_folder,
+    csv_path,
+    output_folder,
+    score_threshold,
+    method="sift",
+    return_matches=False,
 ):
     """
-    判断边界框是否接近矩形
-
-    参数:
-    - box (np.ndarray, shape=(4, 1, 2)): 边界框坐标 [[x1,y1],[x2,y2],[x3,y3],[x4,y4]]
-    - aspect_ratio_threshold (float): 长宽比阈值，超过此值视为非方形
-    - angle_threshold (float): 角度偏差阈值（度），角度偏离90度超过此值视为非方形
-    - min_area_ratio (float): 最小面积比率，边界框面积与最小外接矩形面积的比率
-
-    返回:
-    - is_rect (bool): 边界框是否接近矩形
-    """
-    # 重塑边界框坐标
-    pts = box.reshape(4, 2)
-
-    # 计算边长
-    edges = []
-    for i in range(4):
-        p1 = pts[i]
-        p2 = pts[(i + 1) % 4]
-        edge_length = np.sqrt(((p2 - p1) ** 2).sum())
-        edges.append(edge_length)
-
-    # 检查对边是否近似相等
-    opposite_sides_ratio_1 = max(edges[0], edges[2]) / max(0.1, min(edges[0], edges[2]))
-    opposite_sides_ratio_2 = max(edges[1], edges[3]) / max(0.1, min(edges[1], edges[3]))
-
-    if opposite_sides_ratio_1 > 1.5 or opposite_sides_ratio_2 > 1.5:
-        print("    形状检测: 对边长度不匹配")
-        return False
-
-    # 检查长宽比是否合理
-    side1_avg = (edges[0] + edges[2]) / 2
-    side2_avg = (edges[1] + edges[3]) / 2
-    aspect_ratio = max(side1_avg, side2_avg) / max(0.1, min(side1_avg, side2_avg))
-
-    if aspect_ratio > aspect_ratio_threshold:
-        print(
-            f"    形状检测: 长宽比过大 ({aspect_ratio:.2f} > {aspect_ratio_threshold})"
-        )
-        return False
-
-    # 计算角度 (余弦定理)
-    angles = []
-    for i in range(4):
-        p1 = pts[i]
-        p0 = pts[(i - 1) % 4]
-        p2 = pts[(i + 1) % 4]
-
-        v1 = p0 - p1
-        v2 = p2 - p1
-
-        cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-6)
-        # 限制范围避免浮点误差
-        cos_angle = min(1.0, max(-1.0, cos_angle))
-        angle = np.degrees(np.arccos(cos_angle))
-        angles.append(angle)
-
-    # 检查角度是否接近90度
-    for i, angle in enumerate(angles):
-        if abs(angle - 90) > angle_threshold:
-            print(
-                f"    形状检测: 角度偏离90度过大 (角{i + 1}: {angle:.1f}度, 偏差: {abs(angle - 90):.1f} > {angle_threshold})"
-            )
-            return False
-
-    # 计算边界框面积与最小外接矩形面积的比率
-    box_area = cv2.contourArea(pts.astype(np.float32))
-    rect = cv2.minAreaRect(pts.astype(np.float32))
-    rect_area = rect[1][0] * rect[1][1]
-    area_ratio = box_area / (rect_area + 1e-6)
-
-    if area_ratio < min_area_ratio:
-        print(f"    形状检测: 面积比率过小 ({area_ratio:.2f} < {min_area_ratio})")
-        return False
-
-    return True
-
-
-def process_images(input_folder, pic_folder, csv_path, return_matches=False):
-    """
-    处理所有图像，标记匹配结果并保存，使用NMS去除重叠框
+    处理所有图像，标记匹配结果并保存
 
     Args:
         input_folder (str): 大图所在文件夹.
         pic_folder (str): 小图所在文件夹.
         csv_path (str): CSV文件路径.
+        output_folder (str): 结果输出文件夹.
+        score_threshold (float): 匹配得分阈值. Defaults to 0.7.
+        method (str): 特征匹配方法 ('sift' or 'orb'). Defaults to 'sift'.
         return_matches (bool): 是否返回匹配结果. Defaults to False.
-        iou_threshold (float): 执行NMS时的IoU阈值. Defaults to 0.5.
-        aspect_ratio_threshold (float): 形状检测的长宽比阈值. Defaults to 3.0.
-        angle_threshold (float): 形状检测的角度阈值(度). Defaults to 30.0.
-        min_area_ratio (float): 形状检测的面积比率阈值. Defaults to 0.65.
 
     Returns:
         list or None: 如果return_matches为True，返回所有匹配的列表，否则返回None.
             每个匹配项是一个元组 (small_img_name, box, display_name, score).
     """
+    # 确保输出文件夹存在
+    os.makedirs(output_folder, exist_ok=True)
+
     # 加载ID到名称的映射
     id_to_name = load_name_mapping(csv_path)
 
@@ -457,11 +328,14 @@ def process_images(input_folder, pic_folder, csv_path, return_matches=False):
 
         # --- 缓存大图的 kp 和 des ---
         # 计算一次大图的特征点和描述符
-        print(f"计算大图 {large_img_name} 的特征...")
+        print(f"  计算大图 {large_img_name} 的特征...")
         large_gray = cv2.cvtColor(large_img, cv2.COLOR_BGR2GRAY)
-        detector = cv2.SIFT_create()
+        if method == "sift":
+            detector = cv2.SIFT_create()
+        else:
+            detector = cv2.ORB_create(nfeatures=2000)
         kp_large, des_large = detector.detectAndCompute(large_gray, None)
-        print(f"大图 {large_img_name} 计算完成.")
+        print(f"  大图 {large_img_name} 计算完成.")
         # ---------------------------
 
         # 存储匹配结果
@@ -470,40 +344,34 @@ def process_images(input_folder, pic_folder, csv_path, return_matches=False):
         # 对每个小图进行匹配
         for small_img_name, small_img in small_images.items():
             # 尝试从ID转换为名称
-            display_name = id_to_name.get(small_img_name, small_img_name)
-
+            # print(small_img_name)
+            # print(id_to_name)
+            # breakpoint()
+            display_name = id_to_name.get(str(small_img_name), small_img_name)
+            # print(display_name)
             # --- 使用/填充小图缓存 ---
             kp_small, des_small = None, None
             if small_img_name in small_img_cache:
                 kp_small, des_small = small_img_cache[small_img_name]
-                # print(f"    使用缓存特征 for {small_img_name}") # Debug
             else:
-                # print(f"    计算特征 for {small_img_name}") # Debug
                 small_gray = cv2.cvtColor(small_img, cv2.COLOR_BGR2GRAY)
-                detector_small = cv2.SIFT_create()
+                if method == "sift":
+                    detector_small = cv2.SIFT_create()
+                else:
+                    detector_small = cv2.ORB_create(nfeatures=2000)
                 kp_small_calc, des_small_calc = detector_small.detectAndCompute(
                     small_gray, None
                 )
 
-                if (
-                    des_small_calc is not None and len(kp_small_calc) > 0
-                ):  # Only cache if detection was successful and features exist
+                if des_small_calc is not None:  # Only cache if detection was successful
                     small_img_cache[small_img_name] = (kp_small_calc, des_small_calc)
                     kp_small, des_small = kp_small_calc, des_small_calc
                 else:
-                    print(f"警告: 无法为 {small_img_name} 计算或缓存特征.")
+                    print(f"    警告: 无法为 {small_img_name} 计算特征.")
                     continue  # Skip this small image if features can't be computed
             # -----------------------
 
-            # 检查小图特征是否有效
-            if kp_small is None or des_small is None or len(kp_small) < 4:
-                print(
-                    f"跳过 {small_img_name}: 有效特征点不足 ({len(kp_small) if kp_small else 0})"
-                )
-                continue
-
-            # 特征匹配 - 传入缓存的 kp 和 des 以及几何阈值
-            print(f"尝试匹配: {display_name} (ID: {small_img_name})")  # Debug
+            # 特征匹配 - 传入缓存的 kp 和 des
             matched, box, score, _, _, _, _ = feature_matching(
                 large_img,
                 small_img,
@@ -511,52 +379,21 @@ def process_images(input_folder, pic_folder, csv_path, return_matches=False):
                 des1=des_small,
                 kp2=kp_large,
                 des2=des_large,  # Pass cached large image features
-                threshold=config.lowe_ratio_test_threshold,
+                method=method,
+                threshold=score_threshold,  # Ensure method/threshold are passed
             )
 
-            if (
-                matched and score >= config.score_threshold
-            ):  # 注意：现在 matched=True 意味着通过了所有检查，包括几何检查
+            if matched:
                 print(
-                    f"    在大图 {large_img_name} 中找到有效匹配: {display_name} (ID: {small_img_name}), 特征得分: {score:.2f}"
+                    f"  在大图 {large_img_name} 中找到潜在匹配: {display_name} (ID: {small_img_name}), 得分: {score:.2f}"
                 )
-                matches_found.append(
-                    (small_img_name, box, display_name, score)
-                )  # 添加所有通过检查的匹配
+                if score >= score_threshold:
+                    print("    -> 满足阈值要求，添加匹配.")
+                    matches_found.append((small_img_name, box, display_name, score))
 
-        # 按照得分排序 (仍然使用内点比例得分)
+        # 按照得分排序
         matches_found.sort(key=lambda x: x[3], reverse=True)
-
-        # 执行非极大值抑制(NMS)
-        nms_results = []
-        while matches_found:
-            # 取得分最高的匹配结果
-            best_match = matches_found.pop(0)
-            nms_results.append(best_match)
-
-            # 保留不与最佳匹配重叠的其他匹配
-            remaining_matches = []
-            best_box = best_match[1]  # 提取边界框
-
-            for match in matches_found:
-                current_box = match[1]
-                # 计算IoU
-                iou = calculate_iou(best_box, current_box)
-
-                # 如果IoU小于阈值，保留这个匹配
-                if iou < config.iou_threshold:
-                    remaining_matches.append(match)
-                else:
-                    print(
-                        f"    NMS: 移除与 {best_match[2]} 重叠的框 {match[2]} (IoU: {iou:.2f} > {config.iou_threshold}), (Score: {best_match[3]:.2f} > {match[3]:.2f})"
-                    )
-
-            # 更新剩余的匹配
-            matches_found = remaining_matches
-
-        # 使用NMS后的结果
-        matches_found = nms_results
-
+        # print(matches_found)
         # 如果需要返回匹配结果，添加到总列表中
         if return_matches:
             all_matches.extend(matches_found)
@@ -575,6 +412,13 @@ def process_images(input_folder, pic_folder, csv_path, return_matches=False):
                     f"警告: 跳过绘制无效的边界框 for {display_name} in {large_img_name}."
                 )
 
+        # 保存结果图像
+        output_path = os.path.join(
+            output_folder, f"{large_img_name}_detected_{method}.jpg"
+        )  # Add method to filename
+        cv2.imwrite(output_path, result_img)
+        print(f"结果已保存至: {output_path}\n")
+
     # 如果需要返回匹配结果
     if return_matches:
         return all_matches
@@ -590,12 +434,15 @@ if __name__ == "__main__":
     score_threshold = (
         config.sift_score_threshold
     )  # SIFT得分阈值 (knn match ratio) - 调整此值
-    method_to_use = config.method  # or 'orb'
+    # final_score_threshold = 0.5 # 可以增加一个最终RANSAC得分阈值，如果需要的话
+    method_to_use = "sift"  # or 'orb'
 
     # 处理图像
     process_images(
         input_folder,
         pic_folder,
         csv_path,
+        output_folder,
         score_threshold,
+        method=method_to_use,
     )  # Pass method

@@ -7,3 +7,4 @@ requests
 playwright
 beautifulsoup4
 lxml
+opencv-python

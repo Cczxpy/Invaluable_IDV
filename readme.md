@@ -53,6 +53,7 @@ Invaluable_IDV/
 
 1. **创建并激活虚拟环境**
    ```bash
+   git clone https://github.com/Cczxpy/Invaluable_IDV.git
    conda create -n cbg python=3.11
    conda activate cbg
    ```
@@ -182,3 +183,4 @@ Invaluable_IDV/
 - 2024-12-03：优化配置管理，统一文件路径
 
 **最后更新**：2025-12-03
+

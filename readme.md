@@ -62,6 +62,7 @@ Invaluable_IDV/
 2. **安装依赖**
    ```bash
    pip install -r requirements.txt
+   playwright install
    ```
 
 ### 使用方法
@@ -184,5 +185,6 @@ Invaluable_IDV/
 - 2024-12-03：优化配置管理，统一文件路径
 
 **最后更新**：2025-12-03
+
 
 

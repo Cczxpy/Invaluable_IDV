@@ -386,13 +386,13 @@ with gr.Blocks() as demo:
 
         with gr.Row():
             image_input = gr.Image(type="pil", label="上传图片", height=800)
-            image_output = gr.Image(label="价格标注", height=800)
-
+            
         query_button = gr.Button("查询")
 
         with gr.Row():
-            text_output = gr.Textbox(label="亮点标注", visible=False)
-
+            text_output = gr.Textbox(label="亮点标注", visible=True, lines=37)
+            image_output = gr.Image(label="价格标注", height=800)
+        
         query_button.click(
             process_image, inputs=image_input, outputs=[text_output, image_output]
         )
@@ -405,7 +405,7 @@ with gr.Blocks() as demo:
                 web_input_new = gr.Textbox(label="输入藏宝阁号链接")
                 web_button = gr.Button("查询")
         with gr.Row():
-            web_output = gr.Textbox(label="亮点标注")
+            web_output = gr.Textbox(label="亮点标注", lines=20)
         web_button.click(webslayer, inputs=web_input_new, outputs=web_output)
 
     with gr.Tab("服务控制", id=3):

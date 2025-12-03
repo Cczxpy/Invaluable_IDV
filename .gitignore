@@ -11,7 +11,7 @@ pretrained_models*
 *.bmp
 *.tiff
 *.webp
-!database/pic/*
+!demo_pic/*
 *.xlsx
 
 # python

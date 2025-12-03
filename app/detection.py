@@ -287,6 +287,7 @@ def process_images(
     score_threshold,
     method="sift",
     return_matches=False,
+    final_score_threshold=0.7
 ):
     """
     处理所有图像，标记匹配结果并保存
@@ -299,7 +300,8 @@ def process_images(
         score_threshold (float): 匹配得分阈值. Defaults to 0.7.
         method (str): 特征匹配方法 ('sift' or 'orb'). Defaults to 'sift'.
         return_matches (bool): 是否返回匹配结果. Defaults to False.
-
+        final_score_threshold (float): 最终RANSAC得分阈值. Defaults to 0.7.
+    
     Returns:
         list or None: 如果return_matches为True，返回所有匹配的列表，否则返回None.
             每个匹配项是一个元组 (small_img_name, box, display_name, score).
@@ -387,7 +389,7 @@ def process_images(
                 print(
                     f"  在大图 {large_img_name} 中找到潜在匹配: {display_name} (ID: {small_img_name}), 得分: {score:.2f}"
                 )
-                if score >= score_threshold:
+                if score >= final_score_threshold:
                     print("    -> 满足阈值要求，添加匹配.")
                     matches_found.append((small_img_name, box, display_name, score))
 
@@ -434,7 +436,7 @@ if __name__ == "__main__":
     score_threshold = (
         config.sift_score_threshold
     )  # SIFT得分阈值 (knn match ratio) - 调整此值
-    # final_score_threshold = 0.5 # 可以增加一个最终RANSAC得分阈值，如果需要的话
+    final_score_threshold = config.final_score_threshold  # 可以增加一个最终RANSAC得分阈值，如果需要的话
     method_to_use = "sift"  # or 'orb'
 
     # 处理图像
@@ -445,4 +447,5 @@ if __name__ == "__main__":
         output_folder,
         score_threshold,
         method=method_to_use,
+        final_score_threshold=final_score_threshold
     )  # Pass method
